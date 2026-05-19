@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Echo-Type Mobile</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body { background: #121212; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; text-align: center;}
+    #setup-screen { display: flex; flex-direction: column; align-items: center; }
+    #pin-input { font-size: 40px; letter-spacing: 10px; width: 200px; text-align: center; background: #222; color: white; border: 2px solid #007bff; border-radius: 10px; padding: 10px; margin-bottom: 20px;}
+    #connect-btn { background: #007bff; color: white; font-size: 20px; padding: 15px 40px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+    #connect-btn:disabled { background: #555; cursor: not-allowed; }
+    #mic-screen { display: none; flex-direction: column; align-items: center; }
+    #mic-btn { width: 160px; height: 160px; border-radius: 50%; background: #ff4757; border: none; font-size: 70px; box-shadow: 0 0 30px rgba(255, 71, 87, 0.4); cursor: pointer; transition: 0.2s; -webkit-tap-highlight-color: transparent;}
+    #mic-btn.active { background: #2ed573; box-shadow: 0 0 60px rgba(46, 213, 115, 0.8); transform: scale(1.05); }
+    #status { margin-bottom: 40px; font-size: 20px; font-weight: bold; color: #7bed9f; }
+    #preview { margin-top: 40px; font-size: 18px; color: #aaa; min-height: 50px; padding: 0 20px;}
+  </style>
+</head>
+<body>
+
+  <div id="setup-screen">
+    <h2>Enter 4-Digit Code</h2>
+    <input type="number" id="pin-input" maxlength="4" placeholder="0000">
+    <button id="connect-btn">Pair Device</button>
+  </div>
+
+  <div id="mic-screen">
+    <div id="status">✅ Paired to PC!</div>
+    <button id="mic-btn">🎙️</button>
+    <div id="preview">Tap mic and speak</div>
+  </div>
+
+  <script>
+    const setupScreen = document.getElementById('setup-screen');
+    const micScreen = document.getElementById('mic-screen');
+    const pinInput = document.getElementById('pin-input');
+    const connectBtn = document.getElementById('connect-btn');
+    const statusEl = document.getElementById('status');
+    const previewEl = document.getElementById('preview');
+    const micBtn = document.getElementById('mic-btn');
+
+    const peer = new Peer({
+      config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] }
+    });
+    
+    let conn;
+    let failTimeout;
+
+    connectBtn.addEventListener('click', () => {
+      const typedPin = pinInput.value;
+      if(typedPin.length === 4) {
+        connectBtn.innerText = "Connecting...";
+        connectBtn.disabled = true;
+
+        const pcId = "echotype-pc-" + typedPin;
+        conn = peer.connect(pcId);
+        
+        // NEW: Listen for the PC to send "HANDSHAKE_SUCCESS"
+        conn.on('data', (data) => {
+          if(data === "HANDSHAKE_SUCCESS") {
+            clearTimeout(failTimeout); // Stop the error timer!
+            setupScreen.style.display = 'none';
+            micScreen.style.display = 'flex';
+          }
+        });
+
+        // Error timer (Increased to 10 seconds just in case network is slow)
+        failTimeout = setTimeout(() => {
+          alert("Connection Timeout. Check if PC shows 'Paired'. If yes, Blogspot might be blocking the connection.");
+          connectBtn.innerText = "Pair Device";
+          connectBtn.disabled = false;
+        }, 10000);
+
+      } else {
+        alert("Please enter 4 digits!");
+      }
+    });
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    let isRecording = false;
+
+    micBtn.addEventListener('click', () => {
+      if(!isRecording) {
+        recognition.start();
+        micBtn.classList.add('active');
+        statusEl.innerText = "Listening...";
+        isRecording = true;
+      } else {
+        recognition.stop();
+        micBtn.classList.remove('active');
+        statusEl.innerText = "✅ Paired to PC!";
+        isRecording = false;
+      }
+    });
+
+    recognition.onresult = (event) => {
+      const text = event.results[0][0].transcript;
+      previewEl.innerText = text;
+      if(conn && conn.open) conn.send(text);
+      micBtn.classList.remove('active');
+      statusEl.innerText = "✅ Sent!";
+      isRecording = false;
+    };
+  </script>
+</body>
+</html>
